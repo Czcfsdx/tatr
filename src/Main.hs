@@ -1,5 +1,6 @@
 module Main (main) where
 
+import Numeric.Natural (Natural)
 import Options.Applicative
 import qualified Tatr
 
@@ -19,7 +20,10 @@ data Command
   deriving (Show)
 
 data NewArgs = NewArgs
-  {title :: String}
+  { newArgsTitle :: String,
+    newArgsPriority :: Natural,
+    newArgsTags :: [String]
+  }
   deriving (Show)
 
 parser :: ParserInfo Args
@@ -59,16 +63,31 @@ newParser = New <$> newArgsParser
   where
     newArgsParser =
       NewArgs
-        <$> argument
-          str
+        <$> strArgument
           (metavar "TITLE")
+        <*> option
+          auto
+          ( long "priority"
+              <> short 'p'
+              <> metavar "PRIORITY"
+              <> help "Priority of the new task"
+              <> showDefault
+              <> value 30
+          )
+        <*> many
+          ( strOption
+              ( long "tag"
+                  <> short 't'
+                  <> metavar "TAG"
+                  <> help "Add tag for the new task (can added multiple times)"
+              )
+          )
 
 main :: IO ()
 main = do
   Args opts subCommand <- execParser parser
-  putStrLn $ "Tasks directory: " ++ optDir opts
   case subCommand of
-    New args -> Tatr.createTask (title args)
+    New args -> Tatr.createTask (optDir opts) (newArgsTitle args) (newArgsPriority args) (newArgsTags args)
     List -> Tatr.listTasks
     Find -> Tatr.findTask
     Summary -> Tatr.summaryTasks
