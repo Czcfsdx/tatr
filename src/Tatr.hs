@@ -17,6 +17,9 @@ import Data.Time
 import Numeric.Natural (Natural)
 import System.Directory (createDirectoryIfMissing, makeAbsolute)
 import System.FilePath ((<.>), (</>))
+import Control.Monad.IO.Class (liftIO)
+
+import Log (Logger, debugMsg, infoMsg)
 
 newtype Timestamp = Timestamp LocalTime
   deriving (Eq, Ord)
@@ -41,16 +44,17 @@ data Task = Task
   }
   deriving (Eq, Show)
 
-createTask :: FilePath -> String -> Natural -> [String] -> IO ()
+createTask :: FilePath -> String -> Natural -> [String] -> Logger ()
 createTask workdir title priority tags = do
-  timestamp <- getCurrentTimestamp
-  absDir <- makeAbsolute workdir
+  timestamp <- liftIO getCurrentTimestamp
+  absDir <- liftIO $ makeAbsolute workdir
   let taskDir = absDir </> show timestamp
-  createDirectoryIfMissing False taskDir
+  liftIO $ createDirectoryIfMissing False taskDir
   let taskPath = taskDir </> "TASK" <.> "md"
   let newTask = Task timestamp title Open priority tags
-  writeFile taskPath $ taskToHeader newTask
-  putStrLn $ "[INFO] " ++ "Create Task in " ++ taskPath
+  debugMsg $ "Creating " ++ show newTask
+  liftIO $ writeFile taskPath $ taskToHeader newTask
+  infoMsg $ "Create Task in " ++ taskPath
 
 listTasks :: IO ()
 listTasks = do

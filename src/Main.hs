@@ -1,14 +1,21 @@
 module Main (main) where
 
+import Data.List (intercalate)
+import Data.Char (toLower)
 import Numeric.Natural (Natural)
 import Options.Applicative
+import Control.Monad.Reader (runReaderT)
+
 import qualified Tatr
+import qualified Log (LogLevel (Debug, Error, Info, Warn), runLogger)
 
 data Args = Args GlobalOpts Command
   deriving (Show)
 
 data GlobalOpts = GlobalOpts
-  {optDir :: FilePath}
+  { optDir :: FilePath,
+    optLogLevel :: Log.LogLevel
+  }
   deriving (Show)
 
 -- TODO: Maybe We Don't need Find command
@@ -57,6 +64,29 @@ globalOptsParser =
           <> showDefault
           <> value "."
       )
+      <*> option (eitherReader logLevelReader)
+       ( long "log-level"
+         <> metavar "LEVEL"
+         <> help ("Set Log level, " ++ showAvailableLogLevel)
+         <> showDefaultWith (map toLower . show)
+         <> value Log.Info
+       )
+
+logLevelReader :: String -> Either String Log.LogLevel
+logLevelReader s =
+  case s of
+    "debug" -> Right Log.Debug
+    "info" -> Right Log.Info
+    "warn" -> Right Log.Warn
+    "error" -> Right Log.Error
+    _ -> Left $ "Unknown log level: " ++ s ++ "\n    " ++ showAvailableLogLevel
+
+showAvailableLogLevel :: String
+showAvailableLogLevel =
+  "available levels: "
+    ++ ( intercalate " | " $
+           map (map toLower . show) [minBound :: Log.LogLevel .. maxBound :: Log.LogLevel]
+       )
 
 newParser :: Parser Command
 newParser = New <$> newArgsParser
@@ -86,8 +116,11 @@ newParser = New <$> newArgsParser
 main :: IO ()
 main = do
   Args opts subCommand <- execParser parser
-  case subCommand of
-    New args -> Tatr.createTask (optDir opts) (newArgsTitle args) (newArgsPriority args) (newArgsTags args)
+  let level = optLogLevel opts
+  result <- case subCommand of
+    New args -> runReaderT (Log.runLogger newCommand) level
+      where newCommand = Tatr.createTask (optDir opts) (newArgsTitle args) (newArgsPriority args) (newArgsTags args)
     List -> Tatr.listTasks
     Find -> Tatr.findTask
     Summary -> Tatr.summaryTasks
+  return result
