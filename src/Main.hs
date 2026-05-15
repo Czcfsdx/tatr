@@ -22,7 +22,7 @@ data Command
   = New NewArgs
   | List ListArgs
   | Find
-  | Summary
+  | Summary SummaryArgs
   deriving (Show)
 
 data NewArgs = NewArgs
@@ -34,6 +34,10 @@ data NewArgs = NewArgs
 
 data ListArgs = ListArgs
   {listArgsStatus :: Tatr.StatusToShow}
+  deriving (Show)
+
+data SummaryArgs = SummaryArgs
+  {summaryArgsStatus :: Tatr.StatusToShow}
   deriving (Show)
 
 main :: IO ()
@@ -50,7 +54,9 @@ main = do
         where
           listCommand = Tatr.listTasks (optDir opts) (listArgsStatus args)
       Find -> Tatr.findTask
-      Summary -> Tatr.summaryTasks
+      Summary args -> runReaderT (Log.runLogger summaryCommand) level
+        where
+          summaryCommand = Tatr.summaryTasks (optDir opts) (summaryArgsStatus args)
   return result
 
 parser :: ParserInfo Args
@@ -68,9 +74,9 @@ argsParser =
     <$> globalOptsParser
     <*> hsubparser
       ( command "new" (info newParser (progDesc "Create a new task"))
-          <> command "ls" (info listParser (progDesc "List the tasks"))
+      <> command "ls" (info listParser (progDesc "List the tasks"))
           <> command "find" (info (pure Find) (progDesc "Find the task with a given ID"))
-          <> command "summary" (info (pure Find) (progDesc "Print the summary of the tasks"))
+          <> command "summary" (info summaryParser (progDesc "Print the summary of the tasks"))
       )
 
 globalOptsParser :: Parser GlobalOpts
@@ -124,6 +130,13 @@ listParser = List <$> listArgsParser
     listArgsParser =
       ListArgs
         <$> statusToShowParser "List"
+
+summaryParser :: Parser Command
+summaryParser = Summary <$> summaryArgsParser
+  where
+    summaryArgsParser =
+      SummaryArgs
+        <$> statusToShowParser "Summary"
 
 statusToShowParser :: String -> Parser Tatr.StatusToShow
 statusToShowParser verb =

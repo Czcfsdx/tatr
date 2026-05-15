@@ -33,6 +33,7 @@ import System.Directory
   )
 import System.FilePath (takeDirectory, (<.>), (</>))
 import Text.Read (readMaybe)
+import qualified Data.HashMap.Strict as HM (empty, insertWith, toList, HashMap)
 
 -- The number of the lines at the beginning of TASK.md
 -- which will be parse as header
@@ -53,8 +54,13 @@ instance Show TaskStatus where
   show Open = "OPEN"
   show Closed = "CLOSED"
 
-data StatusToShow = Only Tatr.TaskStatus | All
-  deriving (Eq, Show)
+data StatusToShow = Only TaskStatus | All
+  deriving (Eq)
+
+instance Show StatusToShow where
+  show (Only Open) = "OPEN"
+  show (Only Closed) = "CLOSED"
+  show All = "ALL"
 
 data Task = Task
   { taskID :: Timestamp,
@@ -86,24 +92,42 @@ createTask workDir title priority tags = do
 listTasks :: FilePath -> StatusToShow -> Logger ()
 listTasks workDir statusToShow = do
   tasks <- getAllTasks workDir
-  let result = sortOn Down $ filter match tasks
+  let result = sortOn Down $ filter (matchTask statusToShow) tasks
   mapM_ (liftIO . putStrLn . formatTask workDir) result
-  where
-    match = case statusToShow of
-      Only Open -> (== Open) . taskStatus
-      Only Closed -> (== Closed) . taskStatus
-      All -> \_ -> True
 
 findTask :: IO ()
 findTask = do
   putStrLn "Finding the task with a given ID"
 
-summaryTasks :: IO ()
-summaryTasks = do
-  putStrLn "Printing the summary of the tasks!"
+summaryTasks :: FilePath -> StatusToShow -> Logger ()
+summaryTasks workDir statusToShow = do
+  tasks <- getAllTasks workDir
+  let filteredTasks = filter (matchTask statusToShow) tasks
+  let (total, untagged, tagMap) = foldl' collect (0, 0, HM.empty) filteredTasks
+  let tagList = sortOn snd $ HM.toList tagMap
+  liftIO $ putStrLn $ "STAUTS: " ++ show statusToShow
+  liftIO $ putStrLn $ "TOTAL: " ++ show total
+  liftIO $ putStrLn $ "UNTAGGED: " ++ show untagged
+  liftIO $ putStrLn $ "TAGGED:"
+  mapM_ (liftIO . putStrLn . format) tagList
+  where collect :: (Int, Int, HM.HashMap String Int) -> Task -> (Int, Int, HM.HashMap String Int)
+        collect (total, untagged, tagMap) task =
+          case taskTags task of
+            [] -> (total + 1, untagged + 1, tagMap)
+            tags -> (total + 1, untagged, go tags tagMap)
+
+        go [] = id
+        go (t:ts) = HM.insertWith (+) t 1
+
+        format (tag, count) = "   " ++ tag ++ " => " ++ show count
 
 getCurrentTimestamp :: IO Timestamp
 getCurrentTimestamp = Timestamp <$> zonedTimeToLocalTime <$> getZonedTime
+
+matchTask :: StatusToShow -> Task -> Bool
+matchTask (Only Open) = (== Open) . taskStatus
+matchTask (Only Closed) = (== Closed) . taskStatus
+matchTask All = \_ -> True
 
 getAllTasks :: FilePath -> Logger [Task]
 getAllTasks workDir = do
