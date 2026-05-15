@@ -87,10 +87,10 @@ createTask workDir title priority tags = do
   liftIO $ writeFile path $ taskToHeader newTask
   infoMsg $ "Create Task in " ++ path
 
-listTasks :: FilePath -> StatusToShow -> [String] -> Bool -> Logger ()
-listTasks workDir status tags doesSortByTime = do
+listTasks :: FilePath -> StatusToShow -> [String] -> Bool -> Bool -> Logger ()
+listTasks workDir status tags doesSortByTime doesSortReverse = do
   tasks <- getAllTasks workDir
-  let result = sortTasks doesSortByTime $ filter (matchTask status tags) tasks
+  let result = sortTasks doesSortByTime doesSortReverse $ filter (matchTask status tags) tasks
   mapM_ (liftIO . putStrLn . formatTask workDir) result
 
 summaryTasks :: FilePath -> StatusToShow -> Logger ()
@@ -122,9 +122,11 @@ summaryTasks workDir statusToShow = do
 getCurrentTimestamp :: IO Timestamp
 getCurrentTimestamp = Timestamp <$> zonedTimeToLocalTime <$> getZonedTime
 
-sortTasks :: Bool -> [Task] -> [Task]
-sortTasks False = sortOn (Down . taskPriority)
-sortTasks True = sortOn (Down . taskID)
+sortTasks :: Bool -> Bool -> [Task] -> [Task]
+sortTasks False False = sortOn (Down . taskPriority)
+sortTasks True False = sortOn (Down . taskID)
+sortTasks False True = sortOn (taskPriority)
+sortTasks True True = sortOn (taskID)
 
 matchTask :: StatusToShow -> [String] -> Task -> Bool
 matchTask (Only s) tags task = s == taskStatus task && all (`elem` ts) tags

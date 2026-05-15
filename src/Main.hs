@@ -33,7 +33,8 @@ data NewArgs = NewArgs
 data ListArgs = ListArgs
   { listArgsStatus :: Tatr.StatusToShow,
     listArgsTags :: [String],
-    listArgsSortByTime :: Bool
+    listArgsSortByTime :: Bool,
+    listArgsReverse :: Bool
   }
   deriving (Show)
 
@@ -53,7 +54,7 @@ main = do
             Tatr.createTask (optDir opts) (newArgsTitle args) (newArgsPriority args) (newArgsTags args)
       List args -> runReaderT (Log.runLogger listCommand) level
         where
-          listCommand = Tatr.listTasks (optDir opts) (listArgsStatus args) (listArgsTags args) (listArgsSortByTime args)
+          listCommand = Tatr.listTasks (optDir opts) (listArgsStatus args) (listArgsTags args) (listArgsSortByTime args) (listArgsReverse args)
       Summary args -> runReaderT (Log.runLogger summaryCommand) level
         where
           summaryCommand = Tatr.summaryTasks (optDir opts) (summaryArgsStatus args)
@@ -140,6 +141,11 @@ listParser = List <$> listArgsParser
         <*> switch
           ( long "time"
               <> help "Sort the tasks by timestamp"
+          )
+        <*> switch
+          ( long "reverse"
+              <> short 'r'
+              <> help "Show the tasks in reverse order"
           )
 
 summaryParser :: Parser Command
