@@ -30,9 +30,8 @@ import System.Directory
   ( createDirectoryIfMissing,
     doesFileExist,
     listDirectory,
-    makeAbsolute,
   )
-import System.FilePath ((<.>), (</>))
+import System.FilePath (takeDirectory, (<.>), (</>))
 import Text.Read (readMaybe)
 
 -- The number of the lines at the beginning of TASK.md
@@ -75,25 +74,20 @@ instance Ord Task where
 
 createTask :: FilePath -> String -> Natural -> [String] -> Logger ()
 createTask workDir title priority tags = do
+  liftIO $ createDirectoryIfMissing False workDir
   timestamp <- liftIO getCurrentTimestamp
-  absWorkDir <- liftIO $ makeAbsolute workDir
-  let taskDir = absWorkDir </> show timestamp
-  liftIO $ createDirectoryIfMissing False taskDir
-  let taskPath = taskDir </> "TASK" <.> "md"
+  let path = timestampToTaskPath workDir timestamp
+  liftIO $ createDirectoryIfMissing False $ takeDirectory path
   let newTask = Task timestamp title Open priority tags
   debugMsg $ "Creating " ++ show newTask
-  liftIO $ writeFile taskPath $ taskToHeader newTask
-  infoMsg $ "Create Task in " ++ taskPath
+  liftIO $ writeFile path $ taskToHeader newTask
+  infoMsg $ "Create Task in " ++ path
 
 listTasks :: FilePath -> StatusToShow -> Logger ()
 listTasks workDir statusToShow = do
-  absWorkDir <- liftIO $ makeAbsolute workDir
-  entries <- liftIO $ listDirectory absWorkDir
-  let timestamps = catMaybes $ map (\x -> parseTimeM True defaultTimeLocale "%Y%m%d-%H%M%S" x :: Maybe Timestamp) entries
-  debugMsg $ "Found directories: " ++ show (map ((</>) absWorkDir . show) timestamps)
-  tasks <- catMaybes <$> mapM (timestampToTask absWorkDir) timestamps
+  tasks <- getAllTasks workDir
   let result = sortOn Down $ filter match tasks
-  mapM_ (liftIO . putStrLn . formatTask absWorkDir) result
+  mapM_ (liftIO . putStrLn . formatTask workDir) result
   where
     match = case statusToShow of
       Only Open -> (== Open) . taskStatus
@@ -110,6 +104,29 @@ summaryTasks = do
 
 getCurrentTimestamp :: IO Timestamp
 getCurrentTimestamp = Timestamp <$> zonedTimeToLocalTime <$> getZonedTime
+
+getAllTasks :: FilePath -> Logger [Task]
+getAllTasks workDir = do
+  entries <- liftIO $ listDirectory workDir
+  let timestamps = catMaybes $ map (\x -> parseTimeM True defaultTimeLocale "%Y%m%d-%H%M%S" x :: Maybe Timestamp) entries
+  debugMsg $ "Found directories: " ++ show (map ((</>) workDir . show) timestamps)
+  tasks <- catMaybes <$> mapM (timestampToTask workDir) timestamps
+  return tasks
+
+timestampToTaskPath :: FilePath -> Timestamp -> FilePath
+timestampToTaskPath workDir timestamp = workDir </> show timestamp </> "TASK" <.> "md"
+
+timestampToTask :: FilePath -> Timestamp -> Logger (Maybe Task)
+timestampToTask workDir timestamp = do
+  let path = timestampToTaskPath workDir timestamp
+  doesTaskMdExist <- liftIO $ doesFileExist path
+  if doesTaskMdExist
+    then do
+      headerLines <- (take headerLinesNum . lines) <$> (liftIO $ readFile path)
+      case headerToTask timestamp headerLines of
+        Left msg -> (errorMsg $ path ++ ": " ++ msg) >> return Nothing
+        Right task -> return $ Just task
+    else (warnMsg $ "Fail to find " ++ path ++ " . Ignore this path.") >> return Nothing
 
 formatTask :: FilePath -> Task -> String
 formatTask workDir task =
@@ -132,19 +149,6 @@ taskToHeader (Task _ title status priority tags) =
     ++ show priority
     ++ "\n- TAGS: "
     ++ (intercalate "," tags)
-
-timestampToTask :: FilePath -> Timestamp -> Logger (Maybe Task)
-timestampToTask workDir timestamp = do
-  let taskDir = workDir </> show timestamp
-  let path = taskDir </> "TASK.md"
-  doesTaskMdExist <- liftIO $ doesFileExist path
-  if doesTaskMdExist
-    then do
-      headerLines <- (take headerLinesNum . lines) <$> (liftIO $ readFile path)
-      case headerToTask timestamp headerLines of
-        Left msg -> (errorMsg $ path ++ ": " ++ msg) >> return Nothing
-        Right task -> return $ Just task
-    else (warnMsg $ "Fail to find TASK.md in " ++ taskDir ++ ". Ignore this path.") >> return Nothing
 
 headerToTask :: Timestamp -> [String] -> Either String Task
 headerToTask _ [] = Left "The header is empty"
