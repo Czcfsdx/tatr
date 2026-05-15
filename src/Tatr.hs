@@ -10,8 +10,10 @@ module Tatr
   )
 where
 
+import Control.Monad (unless)
 import Control.Monad.IO.Class (liftIO)
 import Data.Char (isSpace, toLower, toUpper)
+import qualified Data.HashMap.Strict as HM (HashMap, empty, insertWith, toList)
 import Data.List (dropWhileEnd, intercalate, sortOn, stripPrefix)
 import Data.Maybe (catMaybes)
 import Data.Ord (Down (..))
@@ -33,7 +35,6 @@ import System.Directory
   )
 import System.FilePath (takeDirectory, (<.>), (</>))
 import Text.Read (readMaybe)
-import qualified Data.HashMap.Strict as HM (empty, insertWith, toList, HashMap)
 
 -- The number of the lines at the beginning of TASK.md
 -- which will be parse as header
@@ -105,21 +106,25 @@ summaryTasks workDir statusToShow = do
   let filteredTasks = filter (matchTask statusToShow) tasks
   let (total, untagged, tagMap) = foldl' collect (0, 0, HM.empty) filteredTasks
   let tagList = sortOn snd $ HM.toList tagMap
-  liftIO $ putStrLn $ "STAUTS: " ++ show statusToShow
-  liftIO $ putStrLn $ "TOTAL: " ++ show total
+  liftIO $ putStrLn $ "STAUTS:   " ++ show statusToShow
+  liftIO $ putStrLn $ "TOTAL:    " ++ show total
   liftIO $ putStrLn $ "UNTAGGED: " ++ show untagged
   liftIO $ putStrLn $ "TAGGED:"
-  mapM_ (liftIO . putStrLn . format) tagList
-  where collect :: (Int, Int, HM.HashMap String Int) -> Task -> (Int, Int, HM.HashMap String Int)
-        collect (total, untagged, tagMap) task =
-          case taskTags task of
-            [] -> (total + 1, untagged + 1, tagMap)
-            tags -> (total + 1, untagged, go tags tagMap)
+  unless (tagList == []) $
+    let maxTagLen = maximum $ map (length . fst) tagList
+     in mapM_ (liftIO . putStrLn . formatTag maxTagLen) tagList
+  where
+    collect :: (Int, Int, HM.HashMap String Int) -> Task -> (Int, Int, HM.HashMap String Int)
+    collect (total, untagged, tagMap) task =
+      case taskTags task of
+        [] -> (total + 1, untagged + 1, tagMap)
+        tags -> (total + 1, untagged, go tags tagMap)
 
-        go [] = id
-        go (t:ts) = HM.insertWith (+) t 1
+    go [] = id
+    go (t : ts) = go ts . HM.insertWith (+) t 1
 
-        format (tag, count) = "   " ++ tag ++ " => " ++ show count
+    formatTag len (tag, count) =
+      replicate (len + 4 - length tag) ' ' ++ tag ++ " => " ++ show count
 
 getCurrentTimestamp :: IO Timestamp
 getCurrentTimestamp = Timestamp <$> zonedTimeToLocalTime <$> getZonedTime
