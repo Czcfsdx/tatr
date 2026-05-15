@@ -18,7 +18,6 @@ import Control.Monad.Reader (MonadReader, ReaderT, ask)
 data LogLevel = Debug | Info | Warn | Error
   deriving (Eq, Ord, Bounded, Enum, Read, Show)
 
-
 formatLogLevel :: LogLevel -> String
 formatLogLevel Debug = "[DEBUG] "
 formatLogLevel Info = "[INFO] "

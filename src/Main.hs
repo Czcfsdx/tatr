@@ -1,13 +1,12 @@
 module Main (main) where
 
-import Data.List (intercalate)
+import Control.Monad.Reader (runReaderT)
 import Data.Char (toLower)
+import Data.List (intercalate)
+import qualified Log (LogLevel (Debug, Error, Info, Warn), runLogger)
 import Numeric.Natural (Natural)
 import Options.Applicative
-import Control.Monad.Reader (runReaderT)
-
 import qualified Tatr
-import qualified Log (LogLevel (Debug, Error, Info, Warn), runLogger)
 
 data Args = Args GlobalOpts Command
   deriving (Show)
@@ -64,13 +63,14 @@ globalOptsParser =
           <> showDefault
           <> value "."
       )
-      <*> option (eitherReader logLevelReader)
-       ( long "log-level"
-         <> metavar "LEVEL"
-         <> help ("Set Log level, " ++ showAvailableLogLevel)
-         <> showDefaultWith (map toLower . show)
-         <> value Log.Info
-       )
+    <*> option
+      (eitherReader logLevelReader)
+      ( long "log-level"
+          <> metavar "LEVEL"
+          <> help ("Set Log level, " ++ showAvailableLogLevel)
+          <> showDefaultWith (map toLower . show)
+          <> value Log.Info
+      )
 
 logLevelReader :: String -> Either String Log.LogLevel
 logLevelReader s =
@@ -117,10 +117,15 @@ main :: IO ()
 main = do
   Args opts subCommand <- execParser parser
   let level = optLogLevel opts
-  result <- case subCommand of
-    New args -> runReaderT (Log.runLogger newCommand) level
-      where newCommand = Tatr.createTask (optDir opts) (newArgsTitle args) (newArgsPriority args) (newArgsTags args)
-    List -> Tatr.listTasks
-    Find -> Tatr.findTask
-    Summary -> Tatr.summaryTasks
+  result <-
+    case subCommand of
+      New args -> runReaderT (Log.runLogger newCommand) level
+        where
+          newCommand =
+            Tatr.createTask (optDir opts) (newArgsTitle args) (newArgsPriority args) (newArgsTags args)
+      List -> runReaderT (Log.runLogger listCommand) level
+        where
+          listCommand = Tatr.listTasks (optDir opts)
+      Find -> Tatr.findTask
+      Summary -> Tatr.summaryTasks
   return result
