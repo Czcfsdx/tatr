@@ -87,16 +87,16 @@ createTask workDir title priority tags = do
   liftIO $ writeFile path $ taskToHeader newTask
   infoMsg $ "Create Task in " ++ path
 
-listTasks :: FilePath -> StatusToShow -> Logger ()
-listTasks workDir statusToShow = do
+listTasks :: FilePath -> StatusToShow -> [String] -> Logger ()
+listTasks workDir status tags = do
   tasks <- getAllTasks workDir
-  let result = sortOn Down $ filter (matchTask statusToShow) tasks
+  let result = sortOn Down $ filter (matchTask status tags) tasks
   mapM_ (liftIO . putStrLn . formatTask workDir) result
 
 summaryTasks :: FilePath -> StatusToShow -> Logger ()
 summaryTasks workDir statusToShow = do
   tasks <- getAllTasks workDir
-  let filteredTasks = filter (matchTask statusToShow) tasks
+  let filteredTasks = filter (matchTask statusToShow []) tasks
   let (total, untagged, tagMap) = foldl' collect (0, 0, HM.empty) filteredTasks
   let tagList = sortOn snd $ HM.toList tagMap
   liftIO $ putStrLn $ "STAUTS:   " ++ show statusToShow
@@ -122,10 +122,13 @@ summaryTasks workDir statusToShow = do
 getCurrentTimestamp :: IO Timestamp
 getCurrentTimestamp = Timestamp <$> zonedTimeToLocalTime <$> getZonedTime
 
-matchTask :: StatusToShow -> Task -> Bool
-matchTask (Only Open) = (== Open) . taskStatus
-matchTask (Only Closed) = (== Closed) . taskStatus
-matchTask All = \_ -> True
+matchTask :: StatusToShow -> [String] -> Task -> Bool
+matchTask (Only s) tags task = s == taskStatus task && all (`elem` ts) tags
+  where
+    ts = taskTags task
+matchTask All tags task = all (`elem` ts) tags
+  where
+    ts = taskTags task
 
 getAllTasks :: FilePath -> Logger [Task]
 getAllTasks workDir = do

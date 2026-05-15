@@ -31,7 +31,9 @@ data NewArgs = NewArgs
   deriving (Show)
 
 data ListArgs = ListArgs
-  {listArgsStatus :: Tatr.StatusToShow}
+  { listArgsStatus :: Tatr.StatusToShow,
+    listArgsTags :: [String]
+  }
   deriving (Show)
 
 data SummaryArgs = SummaryArgs
@@ -50,7 +52,7 @@ main = do
             Tatr.createTask (optDir opts) (newArgsTitle args) (newArgsPriority args) (newArgsTags args)
       List args -> runReaderT (Log.runLogger listCommand) level
         where
-          listCommand = Tatr.listTasks (optDir opts) (listArgsStatus args)
+          listCommand = Tatr.listTasks (optDir opts) (listArgsStatus args) (listArgsTags args)
       Summary args -> runReaderT (Log.runLogger summaryCommand) level
         where
           summaryCommand = Tatr.summaryTasks (optDir opts) (summaryArgsStatus args)
@@ -126,6 +128,14 @@ listParser = List <$> listArgsParser
     listArgsParser =
       ListArgs
         <$> statusToShowParser "List"
+        <*> many
+          ( strOption
+              ( long "tag"
+                  <> short 't'
+                  <> metavar "TAG"
+                  <> help "Show only tasks with given tags (can added multiple times)"
+              )
+          )
 
 summaryParser :: Parser Command
 summaryParser = Summary <$> summaryArgsParser
