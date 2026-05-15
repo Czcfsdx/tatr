@@ -3,7 +3,6 @@
 module Tatr
   ( createTask,
     listTasks,
-    findTask,
     summaryTasks,
     TaskStatus (..),
     StatusToShow (..),
@@ -77,8 +76,6 @@ instance Ord Task where
     EQ -> compare (taskID x) (taskID y)
     rest -> rest
 
--- TODO: Better Error Handling
-
 createTask :: FilePath -> String -> Natural -> [String] -> Logger ()
 createTask workDir title priority tags = do
   liftIO $ createDirectoryIfMissing False workDir
@@ -95,10 +92,6 @@ listTasks workDir statusToShow = do
   tasks <- getAllTasks workDir
   let result = sortOn Down $ filter (matchTask statusToShow) tasks
   mapM_ (liftIO . putStrLn . formatTask workDir) result
-
-findTask :: IO ()
-findTask = do
-  putStrLn "Finding the task with a given ID"
 
 summaryTasks :: FilePath -> StatusToShow -> Logger ()
 summaryTasks workDir statusToShow = do

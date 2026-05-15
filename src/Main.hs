@@ -17,11 +17,9 @@ data GlobalOpts = GlobalOpts
   }
   deriving (Show)
 
--- TODO: Maybe We Don't need Find command
 data Command
   = New NewArgs
   | List ListArgs
-  | Find
   | Summary SummaryArgs
   deriving (Show)
 
@@ -53,7 +51,6 @@ main = do
       List args -> runReaderT (Log.runLogger listCommand) level
         where
           listCommand = Tatr.listTasks (optDir opts) (listArgsStatus args)
-      Find -> Tatr.findTask
       Summary args -> runReaderT (Log.runLogger summaryCommand) level
         where
           summaryCommand = Tatr.summaryTasks (optDir opts) (summaryArgsStatus args)
@@ -74,8 +71,7 @@ argsParser =
     <$> globalOptsParser
     <*> hsubparser
       ( command "new" (info newParser (progDesc "Create a new task"))
-      <> command "ls" (info listParser (progDesc "List the tasks"))
-          <> command "find" (info (pure Find) (progDesc "Find the task with a given ID"))
+          <> command "ls" (info listParser (progDesc "List the tasks"))
           <> command "summary" (info summaryParser (progDesc "Print the summary of the tasks"))
       )
 
