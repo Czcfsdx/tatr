@@ -5,6 +5,8 @@ module Tatr
     listTasks,
     findTask,
     summaryTasks,
+    TaskStatus (..),
+    StatusToShow (..),
   )
 where
 
@@ -52,6 +54,9 @@ instance Show TaskStatus where
   show Open = "OPEN"
   show Closed = "CLOSED"
 
+data StatusToShow = Only Tatr.TaskStatus | All
+  deriving (Eq, Show)
+
 data Task = Task
   { taskID :: Timestamp,
     taskTitle :: String,
@@ -80,15 +85,20 @@ createTask workDir title priority tags = do
   liftIO $ writeFile taskPath $ taskToHeader newTask
   infoMsg $ "Create Task in " ++ taskPath
 
-listTasks :: FilePath -> Logger ()
-listTasks workDir = do
+listTasks :: FilePath -> StatusToShow -> Logger ()
+listTasks workDir statusToShow = do
   absWorkDir <- liftIO $ makeAbsolute workDir
   entries <- liftIO $ listDirectory absWorkDir
   let timestamps = catMaybes $ map (\x -> parseTimeM True defaultTimeLocale "%Y%m%d-%H%M%S" x :: Maybe Timestamp) entries
   debugMsg $ "Found directories: " ++ show (map ((</>) absWorkDir . show) timestamps)
   tasks <- catMaybes <$> mapM (timestampToTask absWorkDir) timestamps
-  let sortedTasks = sortOn Down tasks
-  mapM_ (liftIO . putStrLn . formatTask absWorkDir) sortedTasks
+  let result = sortOn Down $ filter match tasks
+  mapM_ (liftIO . putStrLn . formatTask absWorkDir) result
+  where
+    match = case statusToShow of
+      Only Open -> (== Open) . taskStatus
+      Only Closed -> (== Closed) . taskStatus
+      All -> \_ -> True
 
 findTask :: IO ()
 findTask = do

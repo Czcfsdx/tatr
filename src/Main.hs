@@ -20,7 +20,7 @@ data GlobalOpts = GlobalOpts
 -- TODO: Maybe We Don't need Find command
 data Command
   = New NewArgs
-  | List
+  | List ListArgs
   | Find
   | Summary
   deriving (Show)
@@ -31,6 +31,27 @@ data NewArgs = NewArgs
     newArgsTags :: [String]
   }
   deriving (Show)
+
+data ListArgs = ListArgs
+  {listArgsStatus :: Tatr.StatusToShow}
+  deriving (Show)
+
+main :: IO ()
+main = do
+  Args opts subCommand <- execParser parser
+  let level = optLogLevel opts
+  result <-
+    case subCommand of
+      New args -> runReaderT (Log.runLogger newCommand) level
+        where
+          newCommand =
+            Tatr.createTask (optDir opts) (newArgsTitle args) (newArgsPriority args) (newArgsTags args)
+      List args -> runReaderT (Log.runLogger listCommand) level
+        where
+          listCommand = Tatr.listTasks (optDir opts) (listArgsStatus args)
+      Find -> Tatr.findTask
+      Summary -> Tatr.summaryTasks
+  return result
 
 parser :: ParserInfo Args
 parser =
@@ -47,7 +68,7 @@ argsParser =
     <$> globalOptsParser
     <*> hsubparser
       ( command "new" (info newParser (progDesc "Create a new task"))
-          <> command "ls" (info (pure List) (progDesc "List the tasks"))
+          <> command "ls" (info listParser (progDesc "List the tasks"))
           <> command "find" (info (pure Find) (progDesc "Find the task with a given ID"))
           <> command "summary" (info (pure Find) (progDesc "Print the summary of the tasks"))
       )
@@ -71,22 +92,6 @@ globalOptsParser =
           <> showDefaultWith (map toLower . show)
           <> value Log.Info
       )
-
-logLevelReader :: String -> Either String Log.LogLevel
-logLevelReader s =
-  case s of
-    "debug" -> Right Log.Debug
-    "info" -> Right Log.Info
-    "warn" -> Right Log.Warn
-    "error" -> Right Log.Error
-    _ -> Left $ "Unknown log level: " ++ s ++ "\n    " ++ showAvailableLogLevel
-
-showAvailableLogLevel :: String
-showAvailableLogLevel =
-  "available levels: "
-    ++ ( intercalate " | " $
-           map (map toLower . show) [minBound :: Log.LogLevel .. maxBound :: Log.LogLevel]
-       )
 
 newParser :: Parser Command
 newParser = New <$> newArgsParser
@@ -113,19 +118,41 @@ newParser = New <$> newArgsParser
               )
           )
 
-main :: IO ()
-main = do
-  Args opts subCommand <- execParser parser
-  let level = optLogLevel opts
-  result <-
-    case subCommand of
-      New args -> runReaderT (Log.runLogger newCommand) level
-        where
-          newCommand =
-            Tatr.createTask (optDir opts) (newArgsTitle args) (newArgsPriority args) (newArgsTags args)
-      List -> runReaderT (Log.runLogger listCommand) level
-        where
-          listCommand = Tatr.listTasks (optDir opts)
-      Find -> Tatr.findTask
-      Summary -> Tatr.summaryTasks
-  return result
+listParser :: Parser Command
+listParser = List <$> listArgsParser
+  where
+    listArgsParser =
+      ListArgs
+        <$> statusToShowParser "List"
+
+statusToShowParser :: String -> Parser Tatr.StatusToShow
+statusToShowParser verb =
+  flag'
+    (Tatr.Only Tatr.Closed)
+    ( long "closed"
+        <> short 'c'
+        <> help (verb ++ " closed tasks")
+    )
+    <|> flag'
+      Tatr.All
+      ( long "all"
+          <> short 'a'
+          <> help (verb ++ " all tasks")
+      )
+    <|> pure (Tatr.Only Tatr.Open)
+
+logLevelReader :: String -> Either String Log.LogLevel
+logLevelReader s =
+  case s of
+    "debug" -> Right Log.Debug
+    "info" -> Right Log.Info
+    "warn" -> Right Log.Warn
+    "error" -> Right Log.Error
+    _ -> Left $ "Unknown log level: " ++ s ++ "\n    " ++ showAvailableLogLevel
+
+showAvailableLogLevel :: String
+showAvailableLogLevel =
+  "available levels: "
+    ++ ( intercalate " | " $
+           map (map toLower . show) [minBound :: Log.LogLevel .. maxBound :: Log.LogLevel]
+       )
