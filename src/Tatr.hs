@@ -1,4 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Tatr
   ( createTask,
@@ -11,11 +12,24 @@ where
 
 import Control.Monad (unless)
 import Control.Monad.IO.Class (liftIO)
-import Data.Char (isSpace, toLower, toUpper)
 import qualified Data.HashMap.Strict as HM (HashMap, empty, insertWith, toList)
-import Data.List (dropWhileEnd, intercalate, sortOn, stripPrefix)
+import Data.List (sortOn)
 import Data.Maybe (catMaybes)
 import Data.Ord (Down (..))
+import Data.Text (Text)
+import qualified Data.Text as T
+  ( intercalate,
+    length,
+    lines,
+    pack,
+    replicate,
+    split,
+    strip,
+    stripPrefix,
+  )
+-- TODO: If you want to do I/O using the UTF-8 encoding, use Data.Text.IO.Utf8, which is faster than this module.
+-- TODO: TIO.readFile read strictly
+import qualified Data.Text.IO as TIO (putStrLn, readFile, writeFile)
 import Data.Time
   ( LocalTime,
     ParseTime,
@@ -33,7 +47,7 @@ import System.Directory
     listDirectory,
   )
 import System.FilePath (takeDirectory, (<.>), (</>))
-import Text.Read (readMaybe)
+import Utils (allIsSpace, capitalize, treadMaybe, tshow)
 
 -- The number of the lines at the beginning of TASK.md
 -- which will be parse as header
@@ -64,10 +78,10 @@ instance Show StatusToShow where
 
 data Task = Task
   { taskID :: Timestamp,
-    taskTitle :: String,
+    taskTitle :: Text,
     taskStatus :: TaskStatus,
     taskPriority :: Natural,
-    taskTags :: [String]
+    taskTags :: [Text]
   }
   deriving (Eq, Show)
 
@@ -76,22 +90,22 @@ instance Ord Task where
     EQ -> compare (taskID x) (taskID y)
     rest -> rest
 
-createTask :: FilePath -> String -> Natural -> [String] -> Logger ()
+createTask :: FilePath -> Text -> Natural -> [Text] -> Logger ()
 createTask workDir title priority tags = do
   liftIO $ createDirectoryIfMissing False workDir
   timestamp <- liftIO getCurrentTimestamp
   let path = timestampToTaskPath workDir timestamp
   liftIO $ createDirectoryIfMissing False $ takeDirectory path
   let newTask = Task timestamp title Open priority tags
-  debugMsg $ "Creating " ++ show newTask
-  liftIO $ writeFile path $ taskToHeader newTask
-  infoMsg $ "Create Task in " ++ path
+  debugMsg $ "Creating " <> tshow newTask
+  liftIO $ TIO.writeFile path $ taskToHeader newTask
+  infoMsg $ "Create Task in " <> (T.pack path)
 
-listTasks :: FilePath -> StatusToShow -> [String] -> Bool -> Bool -> Logger ()
+listTasks :: FilePath -> StatusToShow -> [Text] -> Bool -> Bool -> Logger ()
 listTasks workDir status tags doesSortByTime doesSortReverse = do
   tasks <- getAllTasks workDir
   let result = sortTasks doesSortByTime doesSortReverse $ filter (matchTask status tags) tasks
-  mapM_ (liftIO . putStrLn . formatTask workDir) result
+  mapM_ (liftIO . TIO.putStrLn . formatTask workDir) result
 
 summaryTasks :: FilePath -> StatusToShow -> Logger ()
 summaryTasks workDir statusToShow = do
@@ -99,15 +113,15 @@ summaryTasks workDir statusToShow = do
   let filteredTasks = filter (matchTask statusToShow []) tasks
   let (total, untagged, tagMap) = foldl' collect (0, 0, HM.empty) filteredTasks
   let tagList = sortOn snd $ HM.toList tagMap
-  liftIO $ putStrLn $ "STAUTS:   " ++ show statusToShow
-  liftIO $ putStrLn $ "TOTAL:    " ++ show total
-  liftIO $ putStrLn $ "UNTAGGED: " ++ show untagged
-  liftIO $ putStrLn $ "TAGGED:"
+  liftIO $ TIO.putStrLn $ "STAUTS:   " <> tshow statusToShow
+  liftIO $ TIO.putStrLn $ "TOTAL:    " <> tshow total
+  liftIO $ TIO.putStrLn $ "UNTAGGED: " <> tshow untagged
+  liftIO $ TIO.putStrLn $ "TAGGED:"
   unless (tagList == []) $
-    let maxTagLen = maximum $ map (length . fst) tagList
-     in mapM_ (liftIO . putStrLn . formatTag maxTagLen) tagList
+    let maxTagLen = maximum $ map (T.length . fst) tagList
+     in mapM_ (liftIO . TIO.putStrLn . formatTag maxTagLen) tagList
   where
-    collect :: (Int, Int, HM.HashMap String Int) -> Task -> (Int, Int, HM.HashMap String Int)
+    collect :: (Int, Int, HM.HashMap Text Int) -> Task -> (Int, Int, HM.HashMap Text Int)
     collect (total, untagged, tagMap) task =
       case taskTags task of
         [] -> (total + 1, untagged + 1, tagMap)
@@ -116,8 +130,9 @@ summaryTasks workDir statusToShow = do
     go [] = id
     go (t : ts) = go ts . HM.insertWith (+) t 1
 
+    formatTag :: Int -> (Text, Int) -> Text
     formatTag len (tag, count) =
-      replicate (len + 4 - length tag) ' ' ++ tag ++ " => " ++ show count
+      T.replicate (len + 4 - T.length tag) " " <> tag <> " => " <> tshow count
 
 getCurrentTimestamp :: IO Timestamp
 getCurrentTimestamp = Timestamp <$> zonedTimeToLocalTime <$> getZonedTime
@@ -128,7 +143,7 @@ sortTasks True False = sortOn (Down . taskID)
 sortTasks False True = sortOn (taskPriority)
 sortTasks True True = sortOn (taskID)
 
-matchTask :: StatusToShow -> [String] -> Task -> Bool
+matchTask :: StatusToShow -> [Text] -> Task -> Bool
 matchTask (Only s) tags task = s == taskStatus task && all (`elem` ts) tags
   where
     ts = taskTags task
@@ -140,7 +155,7 @@ getAllTasks :: FilePath -> Logger [Task]
 getAllTasks workDir = do
   entries <- liftIO $ listDirectory workDir
   let timestamps = catMaybes $ map (\x -> parseTimeM True defaultTimeLocale "%Y%m%d-%H%M%S" x :: Maybe Timestamp) entries
-  debugMsg $ "Found directories: " ++ show (map ((</>) workDir . show) timestamps)
+  debugMsg $ "Found directories: " <> tshow (map ((</>) workDir . show) timestamps)
   tasks <- catMaybes <$> mapM (timestampToTask workDir) timestamps
   return tasks
 
@@ -153,38 +168,38 @@ timestampToTask workDir timestamp = do
   doesTaskMdExist <- liftIO $ doesFileExist path
   if doesTaskMdExist
     then do
-      headerLines <- (take headerLinesNum . lines) <$> (liftIO $ readFile path)
+      headerLines <- (take headerLinesNum . T.lines) <$> (liftIO $ TIO.readFile path)
       case headerToTask timestamp headerLines of
-        Left msg -> (errorMsg $ path ++ ": " ++ msg) >> return Nothing
+        Left msg -> (errorMsg $ T.pack path <> ": " <> msg) >> return Nothing
         Right task -> return $ Just task
-    else (warnMsg $ "Fail to find " ++ path ++ " . Ignore this path.") >> return Nothing
+    else (warnMsg $ "Fail to find " <> T.pack path <> " . Ignore this path.") >> return Nothing
 
-formatTask :: FilePath -> Task -> String
+formatTask :: FilePath -> Task -> Text
 formatTask workDir task =
-  workDir </> show timestamp </> "TASK.md:1: " ++ "[PRIORITY: " ++ show priority ++ formatTaskTags tags ++ "] " ++ title
+  T.pack (timestampToTaskPath workDir timestamp) <> ":1: " <> "[PRIORITY: " <> tshow priority <> formatTaskTags tags <> "] " <> title
   where
     timestamp = taskID task
     priority = taskPriority task
     title = taskTitle task
     tags = taskTags task
     formatTaskTags [] = ""
-    formatTaskTags ts = ", TAGS: " ++ (intercalate ", " ts)
+    formatTaskTags ts = ", TAGS: " <> (T.intercalate ", " ts)
 
-taskToHeader :: Task -> String
+taskToHeader :: Task -> Text
 taskToHeader (Task _ title status priority tags) =
   "# "
-    ++ title
-    ++ "\n\n- STATUS: "
-    ++ show status
-    ++ "\n- PRIORITY: "
-    ++ show priority
-    ++ "\n- TAGS: "
-    ++ (intercalate "," tags)
+    <> title
+    <> "\n\n- STATUS: "
+    <> tshow status
+    <> "\n- PRIORITY: "
+    <> tshow priority
+    <> "\n- TAGS: "
+    <> (T.intercalate "," tags)
 
-headerToTask :: Timestamp -> [String] -> Either String Task
+headerToTask :: Timestamp -> [Text] -> Either Text Task
 headerToTask _ [] = Left "The header is empty"
 headerToTask timestamp headerLines = do
-  let hs = filter notBlank headerLines
+  let hs = filter (not . allIsSpace) headerLines
   (titleLine, restLines) <- unconsHeader hs
   title <- parserTitle titleLine
   statusContent <- findField restLines "STATUS"
@@ -196,40 +211,25 @@ headerToTask timestamp headerLines = do
   Right $ Task timestamp title status priority tags
   where
     parserTitle line
-      | '#' : ' ' : afterHash <- dropWhile isSpace line = Right $ trim afterHash
+      | Just content <- T.stripPrefix "# " line = Right $ T.strip content
       | otherwise = Left "Fail to find the title"
 
-    findField [] field = Left $ "Fail to find field: " ++ field
+    findField [] field = Left $ "Fail to find field: " <> field
     findField (line : rest) field
-      | Just content <- stripPrefix ("- " ++ field ++ ":") line = Right $ trim content
+      | Just content <- T.stripPrefix ("- " <> field <> ":") line = Right $ T.strip content
       | otherwise = findField rest field
 
-    parseStatus [] = Left "The value of STATUS is empty"
+    parseStatus "" = Left "The value of STATUS is empty"
     parseStatus content
-      | Just value <- readMaybe (capitalize content) :: Maybe TaskStatus = Right value
-      | otherwise = Left $ "Fail to parse status from: " ++ content
+      | Just value <- treadMaybe (capitalize content) :: Maybe TaskStatus = Right value
+      | otherwise = Left $ "Fail to parse status from: " <> content
 
-    parsePriority [] = Left "The value of PRIORITY is empty"
+    parsePriority "" = Left "The value of PRIORITY is empty"
     parsePriority content
-      | Just value <- readMaybe content :: Maybe Natural = Right value
-      | otherwise = Left $ "Fail to parse priority from: " ++ content
+      | Just value <- treadMaybe content :: Maybe Natural = Right value
+      | otherwise = Left $ "Fail to parse priority from: " <> content
 
-    parserTags content = Right $ filter notBlank $ map trim $ splitBy ',' content
-
-    notBlank :: String -> Bool
-    notBlank = not . all isSpace
-
-    trim = (dropWhileEnd isSpace) . (dropWhile isSpace)
+    parserTags content = Right $ filter (not . allIsSpace) $ map T.strip $ T.split (== ',') content
 
     unconsHeader [] = Left "The header is empty"
     unconsHeader (x : xs) = Right (x, xs)
-
-    capitalize [] = []
-    capitalize (x : xs) = toUpper x : map toLower xs
-
-    splitBy _ [] = []
-    splitBy c str =
-      let (first, rest) = break (== c) str
-       in first : case rest of
-            [] -> []
-            _ : rest' -> splitBy c rest'

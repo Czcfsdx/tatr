@@ -1,9 +1,12 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Main (main) where
 
 import Control.Monad.Reader (runReaderT)
 import Data.Char (toLower)
-import Data.List (intercalate)
-import qualified Log (LogLevel (Debug, Error, Info, Warn), runLogger)
+import Data.Text (Text)
+import qualified Data.Text as T (unpack)
+import qualified Log (LogLevel (Debug, Error, Info, Warn), runLogger, showAvailableLogLevel)
 import Numeric.Natural (Natural)
 import Options.Applicative
 import qualified Tatr
@@ -24,15 +27,15 @@ data Command
   deriving (Show)
 
 data NewArgs = NewArgs
-  { newArgsTitle :: String,
+  { newArgsTitle :: Text,
     newArgsPriority :: Natural,
-    newArgsTags :: [String]
+    newArgsTags :: [Text]
   }
   deriving (Show)
 
 data ListArgs = ListArgs
   { listArgsStatus :: Tatr.StatusToShow,
-    listArgsTags :: [String],
+    listArgsTags :: [Text],
     listArgsSortByTime :: Bool,
     listArgsReverse :: Bool
   }
@@ -94,7 +97,7 @@ globalOptsParser =
       (eitherReader logLevelReader)
       ( long "log-level"
           <> metavar "LEVEL"
-          <> help ("Set Log level, " ++ showAvailableLogLevel)
+          <> help ("Set Log level, " <> T.unpack Log.showAvailableLogLevel)
           <> showDefaultWith (map toLower . show)
           <> value Log.Info
       )
@@ -161,13 +164,13 @@ statusToShowParser verb =
     (Tatr.Only Tatr.Closed)
     ( long "closed"
         <> short 'c'
-        <> help (verb ++ " closed tasks")
+        <> help (verb <> " closed tasks")
     )
     <|> flag'
       Tatr.All
       ( long "all"
           <> short 'a'
-          <> help (verb ++ " all tasks")
+          <> help (verb <> " all tasks")
       )
     <|> pure (Tatr.Only Tatr.Open)
 
@@ -178,11 +181,4 @@ logLevelReader s =
     "info" -> Right Log.Info
     "warn" -> Right Log.Warn
     "error" -> Right Log.Error
-    _ -> Left $ "Unknown log level: " ++ s ++ "\n    " ++ showAvailableLogLevel
-
-showAvailableLogLevel :: String
-showAvailableLogLevel =
-  "available levels: "
-    ++ ( intercalate " | " $
-           map (map toLower . show) [minBound :: Log.LogLevel .. maxBound :: Log.LogLevel]
-       )
+    _ -> Left $ "Unknown log level: " <> s <> "\n    " <> T.unpack Log.showAvailableLogLevel
