@@ -20,16 +20,16 @@ import Data.Text (Text)
 import qualified Data.Text as T
   ( intercalate,
     length,
-    lines,
     pack,
     replicate,
     split,
     strip,
     stripPrefix,
   )
+import qualified Data.Text.Lazy as TL (lines, toStrict)
 -- TODO: If you want to do I/O using the UTF-8 encoding, use Data.Text.IO.Utf8, which is faster than this module.
--- TODO: TIO.readFile read strictly
-import qualified Data.Text.IO as TIO (putStrLn, readFile, writeFile)
+import qualified Data.Text.IO as TIO (putStrLn, writeFile)
+import qualified Data.Text.Lazy.IO as TLIO (readFile)
 import Data.Time
   ( LocalTime,
     ParseTime,
@@ -168,7 +168,7 @@ timestampToTask workDir timestamp = do
   doesTaskMdExist <- liftIO $ doesFileExist path
   if doesTaskMdExist
     then do
-      headerLines <- (take headerLinesNum . T.lines) <$> (liftIO $ TIO.readFile path)
+      headerLines <- (map TL.toStrict . take headerLinesNum . TL.lines) <$> (liftIO $ TLIO.readFile path)
       case headerToTask timestamp headerLines of
         Left msg -> (errorMsg $ T.pack path <> ": " <> msg) >> return Nothing
         Right task -> return $ Just task
