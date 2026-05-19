@@ -26,10 +26,7 @@ import qualified Data.Text as T
     strip,
     stripPrefix,
   )
-import qualified Data.Text.Lazy as TL (lines, toStrict)
--- TODO: If you want to do I/O using the UTF-8 encoding, use Data.Text.IO.Utf8, which is faster than this module.
-import qualified Data.Text.IO as TIO (putStrLn, writeFile)
-import qualified Data.Text.Lazy.IO as TLIO (readFile)
+import qualified Data.Text.IO.Utf8 as TIO (putStrLn, writeFile)
 import Data.Time
   ( LocalTime,
     ParseTime,
@@ -47,7 +44,7 @@ import System.Directory
     listDirectory,
   )
 import System.FilePath (takeDirectory, (<.>), (</>))
-import Utils (allIsSpace, capitalize, treadMaybe, tshow)
+import Utils (allIsSpace, capitalize, readFileLines, treadMaybe, tshow)
 
 -- The number of the lines at the beginning of TASK.md
 -- which will be parse as header
@@ -168,7 +165,7 @@ timestampToTask workDir timestamp = do
   doesTaskMdExist <- liftIO $ doesFileExist path
   if doesTaskMdExist
     then do
-      headerLines <- (map TL.toStrict . take headerLinesNum . TL.lines) <$> (liftIO $ TLIO.readFile path)
+      headerLines <- liftIO $ readFileLines path headerLinesNum
       case headerToTask timestamp headerLines of
         Left msg -> (errorMsg $ T.pack path <> ": " <> msg) >> return Nothing
         Right task -> return $ Just task

@@ -18,7 +18,7 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Reader (MonadReader, ReaderT, ask)
 import Data.Text (Text)
 import qualified Data.Text as T (intercalate, toLower)
-import qualified Data.Text.IO as TIO (putStrLn)
+import qualified Data.Text.IO.Utf8 as TIO (putStrLn)
 import Utils (tshow)
 
 data LogLevel = Debug | Info | Warn | Error
