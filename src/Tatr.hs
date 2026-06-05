@@ -26,7 +26,8 @@ import qualified Data.Text as T
     strip,
     stripPrefix,
   )
-import qualified Data.Text.IO.Utf8 as TIO (putStrLn, writeFile)
+import qualified Data.Text.IO.Utf8 as TIO (writeFile)
+import qualified Data.Text.IO as TIO (putStrLn)
 import Data.Time
   ( LocalTime,
     ParseTime,
